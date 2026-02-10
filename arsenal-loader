@@ -1,0 +1,836 @@
+-- Arsenal Aimbot Script con GUI
+-- Proyecto personal de juego estilo Arsenal
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+-- Configuración del Aimbot (MÁS AGRESIVO)
+local Settings = {
+    Enabled = false,
+    TeamCheck = true,
+    VisibleCheck = false, -- Desactivado para ser más agresivo
+    FOV = 300, -- FOV mucho más grande
+    Smoothness = 0.5, -- Más suavidad = menos robótico pero sigue siendo rápido
+    AimPart = "Head",
+    ShowFOV = true,
+    FOVColor = Color3.fromRGB(255, 0, 0),
+    KeyBind = Enum.KeyCode.E,
+    AutoShoot = true, -- Auto disparo activado por defecto
+    PredictMovement = true,
+    PredictionStrength = 0.25, -- Predicción más fuerte
+    StickyAim = true, -- Mantiene el objetivo bloqueado
+    InstantLock = true, -- Bloqueo instantáneo más agresivo
+    -- ESP Settings
+    ESPEnabled = true,
+    ESPBoxes = true,
+    ESPNames = true,
+    ESPDistance = true,
+    ESPHealth = true,
+    ESPTracers = true,
+    ESPTeamColor = true,
+    ESPMaxDistance = 1000
+}
+
+-- Variables globales
+local Target = nil
+local FOVCircle = nil
+local StatusIndicator = nil
+local ESPObjects = {}
+
+-- Función para crear la GUI
+local function CreateGUI()
+    local ScreenGui = Instance.new("ScreenGui")
+    local MainFrame = Instance.new("Frame")
+    local TitleBar = Instance.new("Frame")
+    local Title = Instance.new("TextLabel")
+    local CloseButton = Instance.new("TextButton")
+    local MinimizeButton = Instance.new("TextButton")
+    
+    -- Configuración del ScreenGui
+    ScreenGui.Name = "AimbotGUI"
+    ScreenGui.Parent = game.CoreGui
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    -- Frame principal
+    MainFrame.Name = "MainFrame"
+    MainFrame.Parent = ScreenGui
+    MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Position = UDim2.new(0.35, 0, 0.25, 0)
+    MainFrame.Size = UDim2.new(0, 350, 0, 420)
+    MainFrame.Active = true
+    MainFrame.Draggable = true
+    
+    -- Esquinas redondeadas
+    local MainCorner = Instance.new("UICorner")
+    MainCorner.CornerRadius = UDim.new(0, 10)
+    MainCorner.Parent = MainFrame
+    
+    -- Barra de título
+    TitleBar.Name = "TitleBar"
+    TitleBar.Parent = MainFrame
+    TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    TitleBar.BorderSizePixel = 0
+    TitleBar.Size = UDim2.new(1, 0, 0, 40)
+    
+    local TitleCorner = Instance.new("UICorner")
+    TitleCorner.CornerRadius = UDim.new(0, 10)
+    TitleCorner.Parent = TitleBar
+    
+    -- Título
+    Title.Name = "Title"
+    Title.Parent = TitleBar
+    Title.BackgroundTransparency = 1
+    Title.Position = UDim2.new(0, 10, 0, 0)
+    Title.Size = UDim2.new(0.7, 0, 1, 0)
+    Title.Font = Enum.Font.GothamBold
+    Title.Text = "Arsenal Aimbot AGRESIVO v2.0"
+    Title.TextColor3 = Color3.fromRGB(255, 0, 0)
+    Title.TextSize = 14
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    
+    -- Botón de cerrar
+    CloseButton.Name = "CloseButton"
+    CloseButton.Parent = TitleBar
+    CloseButton.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+    CloseButton.BorderSizePixel = 0
+    CloseButton.Position = UDim2.new(1, -35, 0, 5)
+    CloseButton.Size = UDim2.new(0, 30, 0, 30)
+    CloseButton.Font = Enum.Font.GothamBold
+    CloseButton.Text = "X"
+    CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseButton.TextSize = 14
+    
+    local CloseCorner = Instance.new("UICorner")
+    CloseCorner.CornerRadius = UDim.new(0, 6)
+    CloseCorner.Parent = CloseButton
+    
+    CloseButton.MouseButton1Click:Connect(function()
+        ScreenGui:Destroy()
+        if FOVCircle then
+            FOVCircle:Remove()
+        end
+    end)
+    
+    -- Botón minimizar
+    MinimizeButton.Name = "MinimizeButton"
+    MinimizeButton.Parent = TitleBar
+    MinimizeButton.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+    MinimizeButton.BorderSizePixel = 0
+    MinimizeButton.Position = UDim2.new(1, -70, 0, 5)
+    MinimizeButton.Size = UDim2.new(0, 30, 0, 30)
+    MinimizeButton.Font = Enum.Font.GothamBold
+    MinimizeButton.Text = "-"
+    MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    MinimizeButton.TextSize = 18
+    
+    local MinCorner = Instance.new("UICorner")
+    MinCorner.CornerRadius = UDim.new(0, 6)
+    MinCorner.Parent = MinimizeButton
+    
+    local minimized = false
+    MinimizeButton.MouseButton1Click:Connect(function()
+        minimized = not minimized
+        if minimized then
+            MainFrame:TweenSize(UDim2.new(0, 350, 0, 40), "Out", "Quad", 0.3, true)
+        else
+            MainFrame:TweenSize(UDim2.new(0, 350, 0, 420), "Out", "Quad", 0.3, true)
+        end
+    end)
+    
+    -- Contenedor de opciones
+    local OptionsFrame = Instance.new("ScrollingFrame")
+    OptionsFrame.Name = "OptionsFrame"
+    OptionsFrame.Parent = MainFrame
+    OptionsFrame.BackgroundTransparency = 1
+    OptionsFrame.Position = UDim2.new(0, 10, 0, 50)
+    OptionsFrame.Size = UDim2.new(1, -20, 1, -60)
+    OptionsFrame.CanvasSize = UDim2.new(0, 0, 0, 1200)
+    OptionsFrame.ScrollBarThickness = 6
+    OptionsFrame.BorderSizePixel = 0
+    
+    -- Función para crear toggles
+    local yPos = 10
+    local function CreateToggle(name, property, callback)
+        local ToggleFrame = Instance.new("Frame")
+        ToggleFrame.Parent = OptionsFrame
+        ToggleFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+        ToggleFrame.Position = UDim2.new(0, 0, 0, yPos)
+        ToggleFrame.Size = UDim2.new(1, 0, 0, 40)
+        ToggleFrame.BorderSizePixel = 0
+        
+        local ToggleCorner = Instance.new("UICorner")
+        ToggleCorner.CornerRadius = UDim.new(0, 6)
+        ToggleCorner.Parent = ToggleFrame
+        
+        local Label = Instance.new("TextLabel")
+        Label.Parent = ToggleFrame
+        Label.BackgroundTransparency = 1
+        Label.Position = UDim2.new(0, 10, 0, 0)
+        Label.Size = UDim2.new(0.7, 0, 1, 0)
+        Label.Font = Enum.Font.Gotham
+        Label.Text = name
+        Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Label.TextSize = 14
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local ToggleButton = Instance.new("TextButton")
+        ToggleButton.Parent = ToggleFrame
+        ToggleButton.BackgroundColor3 = Settings[property] and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 60, 60)
+        ToggleButton.Position = UDim2.new(1, -70, 0.5, -12)
+        ToggleButton.Size = UDim2.new(0, 60, 0, 24)
+        ToggleButton.Font = Enum.Font.GothamBold
+        ToggleButton.Text = Settings[property] and "ON" or "OFF"
+        ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        ToggleButton.TextSize = 12
+        ToggleButton.BorderSizePixel = 0
+        
+        local ButtonCorner = Instance.new("UICorner")
+        ButtonCorner.CornerRadius = UDim.new(0, 4)
+        ButtonCorner.Parent = ToggleButton
+        
+        ToggleButton.MouseButton1Click:Connect(function()
+            Settings[property] = not Settings[property]
+            ToggleButton.Text = Settings[property] and "ON" or "OFF"
+            ToggleButton.BackgroundColor3 = Settings[property] and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(255, 60, 60)
+            if callback then callback(Settings[property]) end
+        end)
+        
+        yPos = yPos + 50
+    end
+    
+    -- Función para crear sliders
+    local function CreateSlider(name, property, min, max, callback)
+        local SliderFrame = Instance.new("Frame")
+        SliderFrame.Parent = OptionsFrame
+        SliderFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+        SliderFrame.Position = UDim2.new(0, 0, 0, yPos)
+        SliderFrame.Size = UDim2.new(1, 0, 0, 60)
+        SliderFrame.BorderSizePixel = 0
+        
+        local SliderCorner = Instance.new("UICorner")
+        SliderCorner.CornerRadius = UDim.new(0, 6)
+        SliderCorner.Parent = SliderFrame
+        
+        local Label = Instance.new("TextLabel")
+        Label.Parent = SliderFrame
+        Label.BackgroundTransparency = 1
+        Label.Position = UDim2.new(0, 10, 0, 5)
+        Label.Size = UDim2.new(1, -20, 0, 20)
+        Label.Font = Enum.Font.Gotham
+        Label.Text = name .. ": " .. Settings[property]
+        Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Label.TextSize = 14
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        
+        local SliderBar = Instance.new("Frame")
+        SliderBar.Parent = SliderFrame
+        SliderBar.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+        SliderBar.Position = UDim2.new(0, 10, 0, 35)
+        SliderBar.Size = UDim2.new(1, -20, 0, 15)
+        SliderBar.BorderSizePixel = 0
+        
+        local BarCorner = Instance.new("UICorner")
+        BarCorner.CornerRadius = UDim.new(0, 8)
+        BarCorner.Parent = SliderBar
+        
+        local SliderFill = Instance.new("Frame")
+        SliderFill.Parent = SliderBar
+        SliderFill.BackgroundColor3 = Color3.fromRGB(100, 150, 255)
+        SliderFill.Size = UDim2.new((Settings[property] - min) / (max - min), 0, 1, 0)
+        SliderFill.BorderSizePixel = 0
+        
+        local FillCorner = Instance.new("UICorner")
+        FillCorner.CornerRadius = UDim.new(0, 8)
+        FillCorner.Parent = SliderFill
+        
+        local dragging = false
+        SliderBar.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+            end
+        end)
+        
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = false
+            end
+        end)
+        
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                local pos = (input.Position.X - SliderBar.AbsolutePosition.X) / SliderBar.AbsoluteSize.X
+                pos = math.clamp(pos, 0, 1)
+                local value = math.floor(min + (max - min) * pos)
+                Settings[property] = value
+                SliderFill.Size = UDim2.new(pos, 0, 1, 0)
+                Label.Text = name .. ": " .. value
+                if callback then callback(value) end
+            end
+        end)
+        
+        yPos = yPos + 70
+    end
+    
+    -- Crear controles
+    CreateToggle("Aimbot Activado", "Enabled")
+    CreateToggle("Verificar Equipo", "TeamCheck")
+    CreateToggle("Verificar Visibilidad", "VisibleCheck")
+    CreateToggle("Mostrar FOV", "ShowFOV", function(value)
+        if FOVCircle then
+            FOVCircle.Visible = value
+        end
+    end)
+    CreateToggle("Auto Disparo", "AutoShoot")
+    CreateToggle("Predecir Movimiento", "PredictMovement")
+    CreateToggle("Sticky Aim (Mantener Objetivo)", "StickyAim")
+    CreateToggle("Bloqueo Instantáneo", "InstantLock")
+    
+    -- ESP Toggles
+    CreateToggle("ESP Activado", "ESPEnabled")
+    CreateToggle("ESP - Cajas", "ESPBoxes")
+    CreateToggle("ESP - Nombres", "ESPNames")
+    CreateToggle("ESP - Distancia", "ESPDistance")
+    CreateToggle("ESP - Salud", "ESPHealth")
+    CreateToggle("ESP - Trazadores", "ESPTracers")
+    CreateToggle("ESP - Color de Equipo", "ESPTeamColor")
+    
+    CreateSlider("FOV (Campo de Visión)", "FOV", 50, 500, function(value)
+        if FOVCircle then
+            FOVCircle.Radius = value
+        end
+    end)
+    CreateSlider("Suavidad", "Smoothness", 1, 100, nil)
+    CreateSlider("Fuerza de Predicción", "PredictionStrength", 5, 50, function(value)
+        Settings.PredictionStrength = value / 100
+    end)
+    CreateSlider("ESP - Distancia Máxima", "ESPMaxDistance", 100, 5000, nil)
+    
+    -- Dropdown para seleccionar parte del cuerpo
+    local DropdownFrame = Instance.new("Frame")
+    DropdownFrame.Parent = OptionsFrame
+    DropdownFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+    DropdownFrame.Position = UDim2.new(0, 0, 0, yPos)
+    DropdownFrame.Size = UDim2.new(1, 0, 0, 40)
+    DropdownFrame.BorderSizePixel = 0
+    
+    local DropCorner = Instance.new("UICorner")
+    DropCorner.CornerRadius = UDim.new(0, 6)
+    DropCorner.Parent = DropdownFrame
+    
+    local DropLabel = Instance.new("TextLabel")
+    DropLabel.Parent = DropdownFrame
+    DropLabel.BackgroundTransparency = 1
+    DropLabel.Position = UDim2.new(0, 10, 0, 0)
+    DropLabel.Size = UDim2.new(0.5, 0, 1, 0)
+    DropLabel.Font = Enum.Font.Gotham
+    DropLabel.Text = "Parte del Cuerpo:"
+    DropLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    DropLabel.TextSize = 14
+    DropLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    local DropButton = Instance.new("TextButton")
+    DropButton.Parent = DropdownFrame
+    DropButton.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+    DropButton.Position = UDim2.new(0.55, 0, 0.15, 0)
+    DropButton.Size = UDim2.new(0.4, 0, 0.7, 0)
+    DropButton.Font = Enum.Font.Gotham
+    DropButton.Text = Settings.AimPart
+    DropButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    DropButton.TextSize = 12
+    DropButton.BorderSizePixel = 0
+    
+    local DropBCorner = Instance.new("UICorner")
+    DropBCorner.CornerRadius = UDim.new(0, 4)
+    DropBCorner.Parent = DropButton
+    
+    local parts = {"Head", "HumanoidRootPart", "Torso", "UpperTorso"}
+    local currentIndex = 1
+    
+    DropButton.MouseButton1Click:Connect(function()
+        currentIndex = currentIndex % #parts + 1
+        Settings.AimPart = parts[currentIndex]
+        DropButton.Text = Settings.AimPart
+    end)
+    
+    return ScreenGui
+end
+
+-- Función para crear el círculo FOV
+local function CreateFOVCircle()
+    local circle = Drawing.new("Circle")
+    circle.Thickness = 2
+    circle.NumSides = 50
+    circle.Radius = Settings.FOV
+    circle.Filled = false
+    circle.Visible = Settings.ShowFOV
+    circle.ZIndex = 999
+    circle.Transparency = 1
+    circle.Color = Settings.FOVColor
+    circle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    return circle
+end
+
+-- Función para crear el indicador de estado
+local function CreateStatusIndicator()
+    local indicator = Drawing.new("Text")
+    indicator.Text = "[AIMBOT: OFF]"
+    indicator.Size = 20
+    indicator.Center = true
+    indicator.Outline = true
+    indicator.OutlineColor = Color3.fromRGB(0, 0, 0)
+    indicator.Color = Color3.fromRGB(255, 60, 60)
+    indicator.Position = Vector2.new(Camera.ViewportSize.X / 2, 30)
+    indicator.Visible = true
+    indicator.ZIndex = 1000
+    indicator.Font = 2 -- Poppins Bold
+    return indicator
+end
+
+-- Función para verificar si el jugador es visible
+local function IsVisible(targetPart)
+    if not Settings.VisibleCheck then return true end
+    
+    local origin = Camera.CFrame.Position
+    local direction = (targetPart.Position - origin).Unit * 500
+    
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    raycastParams.IgnoreWater = true
+    
+    local raycastResult = workspace:Raycast(origin, direction, raycastParams)
+    
+    if raycastResult then
+        local hit = raycastResult.Instance
+        if hit:IsDescendantOf(targetPart.Parent) then
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- Función para obtener el objetivo más cercano
+local function GetClosestTarget()
+    local closestPlayer = nil
+    local shortestDistance = Settings.FOV
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            if Settings.TeamCheck and player.Team == LocalPlayer.Team then
+                continue
+            end
+            
+            local character = player.Character
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            local targetPart = character:FindFirstChild(Settings.AimPart)
+            
+            if humanoid and humanoid.Health > 0 and targetPart then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                
+                if onScreen then
+                    local mousePos = Vector2.new(Mouse.X, Mouse.Y)
+                    local targetPos = Vector2.new(screenPos.X, screenPos.Y)
+                    local distance = (mousePos - targetPos).Magnitude
+                    
+                    if distance < shortestDistance and IsVisible(targetPart) then
+                        shortestDistance = distance
+                        closestPlayer = player
+                    end
+                end
+            end
+        end
+    end
+    
+    return closestPlayer
+end
+
+-- Función principal del aimbot (MÁS AGRESIVO)
+local function AimbotLoop()
+    if Settings.Enabled and Target then
+        local character = Target.Character
+        if character then
+            local targetPart = character:FindFirstChild(Settings.AimPart)
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            
+            if targetPart and humanoid and humanoid.Health > 0 then
+                local targetPos = targetPart.Position
+                
+                -- Predicción de movimiento mejorada
+                if Settings.PredictMovement and targetPart.Parent:FindFirstChild("Humanoid") then
+                    local velocity = targetPart.AssemblyLinearVelocity
+                    targetPos = targetPos + (velocity * Settings.PredictionStrength)
+                end
+                
+                -- Apuntar - Modo agresivo
+                local targetCFrame = CFrame.new(Camera.CFrame.Position, targetPos)
+                
+                if Settings.InstantLock then
+                    -- Bloqueo instantáneo sin suavizado
+                    Camera.CFrame = targetCFrame
+                elseif Settings.StickyAim then
+                    -- Sticky aim más agresivo
+                    Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, Settings.Smoothness)
+                else
+                    -- Suavizado normal
+                    Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, Settings.Smoothness / 10)
+                end
+                
+                -- Auto disparo agresivo
+                if Settings.AutoShoot then
+                    mouse1press()
+                    task.wait(0.02) -- Disparo más rápido
+                    mouse1release()
+                end
+            else
+                -- Si el objetivo muere, buscar nuevo objetivo inmediatamente
+                if not Settings.StickyAim then
+                    Target = nil
+                end
+            end
+        else
+            Target = nil
+        end
+    end
+end
+
+-- ════════════════════════════════════════════════════════════
+-- SISTEMA ESP COMPLETO
+-- ════════════════════════════════════════════════════════════
+
+-- Función para crear ESP para un jugador
+local function CreateESP(player)
+    local ESPFolder = {
+        Box = nil,
+        BoxOutline = nil,
+        Name = nil,
+        Distance = nil,
+        Health = nil,
+        HealthBar = nil,
+        HealthBarOutline = nil,
+        Tracer = nil
+    }
+    
+    -- Crear caja (outline)
+    local boxOutline = Drawing.new("Square")
+    boxOutline.Visible = false
+    boxOutline.Color = Color3.new(0, 0, 0)
+    boxOutline.Thickness = 3
+    boxOutline.Transparency = 1
+    boxOutline.Filled = false
+    ESPFolder.BoxOutline = boxOutline
+    
+    -- Crear caja principal
+    local box = Drawing.new("Square")
+    box.Visible = false
+    box.Color = Color3.new(1, 1, 1)
+    box.Thickness = 1
+    box.Transparency = 1
+    box.Filled = false
+    ESPFolder.Box = box
+    
+    -- Crear texto de nombre
+    local name = Drawing.new("Text")
+    name.Visible = false
+    name.Center = true
+    name.Outline = true
+    name.OutlineColor = Color3.new(0, 0, 0)
+    name.Color = Color3.new(1, 1, 1)
+    name.Size = 16
+    name.Font = 2
+    name.Text = player.Name
+    ESPFolder.Name = name
+    
+    -- Crear texto de distancia
+    local distance = Drawing.new("Text")
+    distance.Visible = false
+    distance.Center = true
+    distance.Outline = true
+    distance.OutlineColor = Color3.new(0, 0, 0)
+    distance.Color = Color3.new(1, 1, 1)
+    distance.Size = 14
+    distance.Font = 2
+    ESPFolder.Distance = distance
+    
+    -- Crear barra de salud (outline)
+    local healthBarOutline = Drawing.new("Square")
+    healthBarOutline.Visible = false
+    healthBarOutline.Color = Color3.new(0, 0, 0)
+    healthBarOutline.Thickness = 3
+    healthBarOutline.Transparency = 1
+    healthBarOutline.Filled = true
+    ESPFolder.HealthBarOutline = healthBarOutline
+    
+    -- Crear barra de salud
+    local healthBar = Drawing.new("Square")
+    healthBar.Visible = false
+    healthBar.Thickness = 1
+    healthBar.Transparency = 1
+    healthBar.Filled = true
+    ESPFolder.HealthBar = healthBar
+    
+    -- Crear trazador
+    local tracer = Drawing.new("Line")
+    tracer.Visible = false
+    tracer.Color = Color3.new(1, 1, 1)
+    tracer.Thickness = 1
+    tracer.Transparency = 1
+    ESPFolder.Tracer = tracer
+    
+    ESPObjects[player] = ESPFolder
+end
+
+-- Función para remover ESP de un jugador
+local function RemoveESP(player)
+    if ESPObjects[player] then
+        for _, drawing in pairs(ESPObjects[player]) do
+            if drawing then
+                drawing:Remove()
+            end
+        end
+        ESPObjects[player] = nil
+    end
+end
+
+-- Función para actualizar ESP
+local function UpdateESP()
+    if not Settings.ESPEnabled then
+        for _, espFolder in pairs(ESPObjects) do
+            for _, drawing in pairs(espFolder) do
+                if drawing then
+                    drawing.Visible = false
+                end
+            end
+        end
+        return
+    end
+    
+    for player, espFolder in pairs(ESPObjects) do
+        if player.Character and player ~= LocalPlayer then
+            local character = player.Character
+            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            local head = character:FindFirstChild("Head")
+            
+            if humanoidRootPart and humanoid and humanoid.Health > 0 and head then
+                -- Calcular distancia
+                local distance = (humanoidRootPart.Position - Camera.CFrame.Position).Magnitude
+                
+                if distance <= Settings.ESPMaxDistance then
+                    -- Verificar si está en pantalla
+                    local vector, onScreen = Camera:WorldToViewportPoint(humanoidRootPart.Position)
+                    
+                    if onScreen then
+                        -- Calcular el color
+                        local color = Color3.new(1, 1, 1)
+                        if Settings.ESPTeamColor and player.Team then
+                            if player.Team == LocalPlayer.Team then
+                                color = Color3.new(0, 1, 0) -- Verde para equipo
+                            else
+                                color = Color3.new(1, 0, 0) -- Rojo para enemigos
+                            end
+                        end
+                        
+                        -- Calcular dimensiones de la caja
+                        local hrpPos = Camera:WorldToViewportPoint(humanoidRootPart.Position)
+                        local headPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+                        local legPos = Camera:WorldToViewportPoint(humanoidRootPart.Position - Vector3.new(0, 3, 0))
+                        
+                        local height = math.abs(headPos.Y - legPos.Y)
+                        local width = height / 2
+                        
+                        -- Actualizar caja
+                        if Settings.ESPBoxes then
+                            espFolder.BoxOutline.Size = Vector2.new(width, height)
+                            espFolder.BoxOutline.Position = Vector2.new(hrpPos.X - width/2, hrpPos.Y - height/2)
+                            espFolder.BoxOutline.Visible = true
+                            
+                            espFolder.Box.Size = Vector2.new(width, height)
+                            espFolder.Box.Position = Vector2.new(hrpPos.X - width/2, hrpPos.Y - height/2)
+                            espFolder.Box.Color = color
+                            espFolder.Box.Visible = true
+                        else
+                            espFolder.BoxOutline.Visible = false
+                            espFolder.Box.Visible = false
+                        end
+                        
+                        -- Actualizar nombre
+                        if Settings.ESPNames then
+                            espFolder.Name.Position = Vector2.new(hrpPos.X, headPos.Y - 20)
+                            espFolder.Name.Color = color
+                            espFolder.Name.Text = player.Name
+                            espFolder.Name.Visible = true
+                        else
+                            espFolder.Name.Visible = false
+                        end
+                        
+                        -- Actualizar distancia
+                        if Settings.ESPDistance then
+                            espFolder.Distance.Position = Vector2.new(hrpPos.X, legPos.Y + 5)
+                            espFolder.Distance.Color = color
+                            espFolder.Distance.Text = math.floor(distance) .. "m"
+                            espFolder.Distance.Visible = true
+                        else
+                            espFolder.Distance.Visible = false
+                        end
+                        
+                        -- Actualizar barra de salud
+                        if Settings.ESPHealth then
+                            local healthPercent = humanoid.Health / humanoid.MaxHealth
+                            local barHeight = height
+                            local barWidth = 4
+                            
+                            -- Outline
+                            espFolder.HealthBarOutline.Size = Vector2.new(barWidth + 2, barHeight + 2)
+                            espFolder.HealthBarOutline.Position = Vector2.new(hrpPos.X - width/2 - barWidth - 3, hrpPos.Y - height/2 - 1)
+                            espFolder.HealthBarOutline.Visible = true
+                            
+                            -- Barra
+                            local healthColor = Color3.new(1 - healthPercent, healthPercent, 0)
+                            espFolder.HealthBar.Size = Vector2.new(barWidth, barHeight * healthPercent)
+                            espFolder.HealthBar.Position = Vector2.new(hrpPos.X - width/2 - barWidth - 2, hrpPos.Y + height/2 - (barHeight * healthPercent))
+                            espFolder.HealthBar.Color = healthColor
+                            espFolder.HealthBar.Visible = true
+                        else
+                            espFolder.HealthBarOutline.Visible = false
+                            espFolder.HealthBar.Visible = false
+                        end
+                        
+                        -- Actualizar trazador
+                        if Settings.ESPTracers then
+                            espFolder.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                            espFolder.Tracer.To = Vector2.new(hrpPos.X, hrpPos.Y)
+                            espFolder.Tracer.Color = color
+                            espFolder.Tracer.Visible = true
+                        else
+                            espFolder.Tracer.Visible = false
+                        end
+                    else
+                        -- No está en pantalla, ocultar
+                        for _, drawing in pairs(espFolder) do
+                            if drawing then
+                                drawing.Visible = false
+                            end
+                        end
+                    end
+                else
+                    -- Fuera de rango, ocultar
+                    for _, drawing in pairs(espFolder) do
+                        if drawing then
+                            drawing.Visible = false
+                        end
+                    end
+                end
+            else
+                -- No tiene las partes necesarias, ocultar
+                for _, drawing in pairs(espFolder) do
+                    if drawing then
+                        drawing.Visible = false
+                    end
+                end
+            end
+        else
+            -- Jugador no válido, ocultar
+            if espFolder then
+                for _, drawing in pairs(espFolder) do
+                    if drawing then
+                        drawing.Visible = false
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Crear ESP para jugadores existentes
+for _, player in pairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        CreateESP(player)
+    end
+end
+
+-- Conectar eventos de jugadores
+Players.PlayerAdded:Connect(function(player)
+    CreateESP(player)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    RemoveESP(player)
+end)
+
+-- Inicializar
+local GUI = CreateGUI()
+FOVCircle = CreateFOVCircle()
+StatusIndicator = CreateStatusIndicator()
+
+-- Actualizar círculo FOV e indicador de estado
+RunService.RenderStepped:Connect(function()
+    if FOVCircle then
+        FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        FOVCircle.Radius = Settings.FOV
+        FOVCircle.Visible = Settings.ShowFOV
+    end
+    
+    -- Actualizar indicador de estado
+    if StatusIndicator then
+        StatusIndicator.Position = Vector2.new(Camera.ViewportSize.X / 2, 30)
+        if Settings.Enabled then
+            StatusIndicator.Text = "[AIMBOT: ON]"
+            StatusIndicator.Color = Color3.fromRGB(0, 255, 100)
+            if Target then
+                StatusIndicator.Text = "[AIMBOT: ON] - TARGET LOCKED"
+                StatusIndicator.Color = Color3.fromRGB(255, 0, 0)
+            end
+        else
+            StatusIndicator.Text = "[AIMBOT: OFF]"
+            StatusIndicator.Color = Color3.fromRGB(255, 60, 60)
+        end
+    end
+end)
+
+-- Loop principal
+RunService.RenderStepped:Connect(function()
+    if Settings.Enabled then
+        Target = GetClosestTarget()
+        AimbotLoop()
+    end
+    
+    -- Actualizar ESP
+    UpdateESP()
+end)
+
+-- Control de tecla
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Settings.KeyBind then
+        Settings.Enabled = not Settings.Enabled
+    end
+end)
+
+print("═══════════════════════════════════════")
+print("Arsenal Aimbot AGRESIVO v2.0 cargado!")
+print("═══════════════════════════════════════")
+print("Presiona 'E' para activar/desactivar")
+print("Indicador de estado: Parte superior de la pantalla")
+print("═══════════════════════════════════════")
+print("Características AGRESIVAS activadas:")
+print("- FOV ampliado: 300")
+print("- Auto disparo: ACTIVADO")
+print("- Predicción mejorada: 25%")
+print("- Sticky Aim: ACTIVADO")
+print("- Bloqueo instantáneo: ACTIVADO")
+print("═══════════════════════════════════════")
+print("ESP COMPLETO activado:")
+print("- Cajas: ✓")
+print("- Nombres: ✓")
+print("- Distancia: ✓")
+print("- Barras de salud: ✓")
+print("- Trazadores: ✓")
+print("- Colores de equipo: ✓")
+print("- Distancia máxima: 1000m")
+print("═══════════════════════════════════════")
